@@ -1,0 +1,154 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function own(uid) { return signedIn() && request.auth.uid == uid; }
+    function admin() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active';
+    }
+    function nonempty(value) { return value is string && value.size() > 0; }
+    function organizationRole(role) { return role in ['university', 'industry']; }
+
+    // Profile of the signed-in user, for role and organisation checks.
+    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function active() { return signedIn() && profile().status == 'active'; }
+    function hasRole(role) { return active() && profile().role == role; }
+    function myOrg() { return profile().organizationId; }
+    function onlyChanges(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+
+    function initialUser(d, uid) {
+      return d.keys().hasAll(['uid', 'fullName', 'email', 'role', 'status', 'organizationId', 'createdAt', 'updatedAt'])
+        && d.keys().hasOnly(['uid', 'fullName', 'email', 'phone', 'role', 'status', 'organizationId', 'designation', 'city', 'state', 'createdAt', 'updatedAt'])
+        && d.uid == uid && nonempty(d.fullName) && d.email == request.auth.token.email
+        && d.createdAt == request.time && d.updatedAt == request.time
+        && ((d.role == 'citizen' && d.status == 'active' && d.organizationId == null)
+          || (d.role == 'admin' && d.status == 'pending' && d.organizationId == null && nonempty(d.designation))
+          || (organizationRole(d.role) && d.status == 'pending' && nonempty(d.organizationId)
+            && nonempty(d.designation) && nonempty(d.phone) && nonempty(d.city) && nonempty(d.state)
+            && getAfter(/databases/$(database)/documents/organizations/$(d.organizationId)).data.createdBy == uid
+            && getAfter(/databases/$(database)/documents/organizations/$(d.organizationId)).data.type == d.role
+            && getAfter(/databases/$(database)/documents/organizations/$(d.organizationId)).data.status == 'pending'));
+    }
+    function validDecision(before, after, activeStatus) {
+      return after.updatedAt == request.time && (
+        (before.status in ['pending', 'suspended'] && after.status == activeStatus
+          && after.diff(before).affectedKeys().hasOnly(['status', 'updatedAt', 'approvedBy', 'approvedAt'])
+          && after.approvedBy == request.auth.uid && after.approvedAt == request.time)
+        || (before.status == 'pending' && after.status == 'rejected'
+          && after.diff(before).affectedKeys().hasOnly(['status', 'updatedAt', 'rejectedBy', 'rejectedAt', 'rejectionReason'])
+          && nonempty(after.rejectionReason) && after.rejectionReason.matches('[\\s\\S]*\\S[\\s\\S]*')
+          && after.rejectedBy == request.auth.uid && after.rejectedAt == request.time)
+        || (before.status == activeStatus && after.status == 'suspended'
+          && after.diff(before).affectedKeys().hasOnly(['status', 'updatedAt', 'suspendedBy', 'suspendedAt'])
+          && after.suspendedBy == request.auth.uid && after.suspendedAt == request.time));
+    }
+    function linkedOrganizationDecision(d, uid) {
+      let org = getAfter(/databases/$(database)/documents/organizations/$(d.organizationId)).data;
+      return org.createdBy == uid && org.type == d.role
+        && org.status == (d.status == 'active' ? 'approved' : d.status)
+        && org.updatedAt == request.time;
+    }
+    match /users/{uid} {
+      allow read: if own(uid) || admin();
+      allow create: if own(uid) && initialUser(request.resource.data, uid);
+      allow update: if
+        (own(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fullName', 'phone', 'city', 'state', 'designation', 'updatedAt', 'lastLoginAt'])
+          && request.resource.data.updatedAt == request.time)
+        || (admin() && !own(uid) && validDecision(resource.data, request.resource.data, 'active')
+          && (!organizationRole(resource.data.role) || linkedOrganizationDecision(request.resource.data, uid)));
+      allow delete: if false;
+    }
+    match /organizations/{id} {
+      allow read: if admin() || (signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == id);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll(['id', 'name', 'type', 'officialEmail', 'phone', 'address', 'city', 'state', 'status', 'createdBy', 'createdAt', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['id', 'name', 'type', 'organizationCategory', 'sector', 'officialEmail', 'phone', 'website', 'address', 'city', 'state', 'status', 'createdBy', 'createdAt', 'updatedAt'])
+        && request.resource.data.id == id && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'pending' && organizationRole(request.resource.data.type)
+        && nonempty(request.resource.data.name) && nonempty(request.resource.data.phone)
+        && nonempty(request.resource.data.address) && nonempty(request.resource.data.city) && nonempty(request.resource.data.state)
+        && (request.resource.data.type == 'university' ? nonempty(request.resource.data.organizationCategory) : nonempty(request.resource.data.sector))
+        && request.resource.data.officialEmail == request.auth.token.email
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time
+        && !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == id
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == request.resource.data.type
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'pending';
+      allow update: if admin() && request.auth.uid != resource.data.createdBy
+        && validDecision(resource.data, request.resource.data, 'approved')
+        && getAfter(/databases/$(database)/documents/users/$(resource.data.createdBy)).data.organizationId == id
+        && getAfter(/databases/$(database)/documents/users/$(resource.data.createdBy)).data.status == (request.resource.data.status == 'approved' ? 'active' : request.resource.data.status)
+        && getAfter(/databases/$(database)/documents/users/$(resource.data.createdBy)).data.updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    // ------------------------------------------------------------------
+    // Challenges
+    //
+    // Citizens create and read their own. The citizen's app stores the AI
+    // analysis on the document right after submitting, so it may write only
+    // the analysis fields. Admins decide everything else. A university reads
+    // and updates the challenges assigned to its organisation.
+    // ------------------------------------------------------------------
+    match /challenges/{id} {
+      allow read: if admin()
+        || (signedIn() && resource.data.submittedById == request.auth.uid)
+        || (hasRole('university') && resource.data.assignedUniversityId == myOrg());
+      allow create: if hasRole('citizen')
+        && request.resource.data.submittedById == request.auth.uid
+        && nonempty(request.resource.data.title)
+        && nonempty(request.resource.data.description);
+      allow update: if admin()
+        || (signedIn() && resource.data.submittedById == request.auth.uid
+          && onlyChanges(['ai', 'aiStatus', 'aiError', 'statusHistory', 'updatedAt']))
+        || (hasRole('university') && resource.data.assignedUniversityId == myOrg()
+          && onlyChanges(['status', 'progress', 'projectId', 'peopleImpacted', 'declineReason',
+            'assignedUniversityId', 'assignedUniversityName', 'assignedDepartment', 'assignedAt',
+            'assignedBy', 'matchScore', 'assignmentWasOverride', 'statusHistory', 'updatedAt']));
+      allow delete: if false;
+    }
+
+    // ------------------------------------------------------------------
+    // Projects: readable by any active account, so industry partners can
+    // discover them and citizens can follow delivery. Only the owning
+    // university creates and updates its projects.
+    // ------------------------------------------------------------------
+    match /projects/{id} {
+      allow read: if active();
+      allow create: if hasRole('university')
+        && request.resource.data.universityId == myOrg()
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if admin()
+        || (hasRole('university') && resource.data.universityId == myOrg());
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if active();
+        allow create: if active()
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000;
+        allow update, delete: if false;
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Industry interest: a partner organisation's offer on a project.
+    // ------------------------------------------------------------------
+    match /industryInterests/{id} {
+      allow read: if admin()
+        || hasRole('university')
+        || (hasRole('industry') && resource.data.organizationId == myOrg())
+        || (hasRole('industry') && resource.data.userUid == request.auth.uid);
+      allow create, update: if hasRole('industry')
+        && request.resource.data.userUid == request.auth.uid
+        && (request.resource.data.organizationId == myOrg()
+          || request.resource.data.organizationId == request.auth.uid);
+      allow delete: if false;
+    }
+  }
+}

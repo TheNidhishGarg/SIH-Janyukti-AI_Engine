@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "893286377789",
+    "project_id": "janyukti-1cbba",
+    "storage_bucket": "janyukti-1cbba.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:893286377789:android:ae75fe87ca4f9ac6ad3d54",
+        "android_client_info": {
+          "package_name": "com.aditya.janyukti"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD_pnV3t4Mu9A_Athr0M6LZMc7SenvPIDY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

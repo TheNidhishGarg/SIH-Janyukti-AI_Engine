@@ -1,0 +1,85 @@
+import 'user_model.dart';
+
+class OrganizationModel {
+  const OrganizationModel({
+    required this.id,
+    required this.name,
+    required this.type,
+    required this.officialEmail,
+    required this.phone,
+    required this.address,
+    required this.city,
+    required this.state,
+    required this.status,
+    required this.createdBy,
+    this.category,
+    this.sector,
+    this.website,
+    this.createdAt,
+    this.updatedAt,
+  });
+  final String id,
+      name,
+      type,
+      officialEmail,
+      phone,
+      address,
+      city,
+      state,
+      status,
+      createdBy;
+  final String? category, sector, website;
+  final DateTime? createdAt, updatedAt;
+  factory OrganizationModel.fromMap(String id, Map<String, dynamic> d) =>
+      OrganizationModel(
+        id: id,
+        name: d['name'] as String,
+        type: d['type'] as String,
+        officialEmail: d['officialEmail'] as String,
+        phone: d['phone'] as String,
+        address: d['address'] as String,
+        city: d['city'] as String,
+        state: d['state'] as String,
+        status: d['status'] as String,
+        createdBy: d['createdBy'] as String,
+        category: d['organizationCategory'] as String?,
+        sector: d['sector'] as String?,
+        website: d['website'] as String?,
+        createdAt: UserModel.date(d['createdAt']),
+        updatedAt: UserModel.date(d['updatedAt']),
+      );
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'name': name,
+    'type': type,
+    'officialEmail': officialEmail,
+    'phone': phone,
+    'address': address,
+    'city': city,
+    'state': state,
+    'status': status,
+    'createdBy': createdBy,
+    'organizationCategory': category,
+    'sector': sector,
+    'website': website,
+    'createdAt': createdAt,
+    'updatedAt': updatedAt,
+  };
+  OrganizationModel copyWith({String? status}) => OrganizationModel(
+    id: id,
+    name: name,
+    type: type,
+    officialEmail: officialEmail,
+    phone: phone,
+    address: address,
+    city: city,
+    state: state,
+    status: status ?? this.status,
+    createdBy: createdBy,
+    category: category,
+    sector: sector,
+    website: website,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+  );
+}

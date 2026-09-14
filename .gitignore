@@ -24,6 +24,5 @@ uploads/
 # OpenAlex API cache (32 MB, re-downloaded by scripts/ingest_openalex.py)
 app/data/openalex_in.json
 
-# Flutter app checkout and local toolchain (the app has its own repository)
-frontend/
+# Local Flutter SDK download
 .tools/

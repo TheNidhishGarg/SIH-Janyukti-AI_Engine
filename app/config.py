@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     DUPLICATE_SIMILARITY_THRESHOLD: float = 0.50
     MATCH_TOP_K: int = 5
 
+    # --- Flutter app integration ---
+    # The app signs users in with Firebase and calls /ai with its ID token.
+    FIREBASE_PROJECT_ID: str = ""
+    # off: accept unauthenticated /ai calls (local development).
+    # required: verify the Firebase ID token on every /ai call.
+    FIREBASE_AUTH_MODE: str = "off"
+
     # --- Media ---
     CLOUDINARY_URL: str = ""
     UPLOAD_DIR: str = "./uploads"

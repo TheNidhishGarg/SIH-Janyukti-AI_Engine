@@ -122,3 +122,35 @@ def normalize_category(value: str | None) -> str:
         if cleaned in cat.lower() or cat.lower().split(" &")[0] in cleaned:
             return cat
     return "Other"
+
+
+# The category dropdown in the Flutter app is coarser than the model taxonomy.
+# Analysis results carry both, so the app can show the precise category while
+# still offering "apply AI category" against the options it actually has.
+APP_CATEGORIES: list[str] = [
+    "Water Management",
+    "Waste Management",
+    "Agriculture",
+    "Infrastructure",
+    "Healthcare",
+    "Education",
+    "Other",
+]
+
+_TO_APP_CATEGORY: dict[str, str] = {
+    "Water Management": "Water Management",
+    "Waste Management": "Waste Management",
+    "Energy & Infrastructure": "Infrastructure",
+    "Transportation & Safety": "Infrastructure",
+    "Education": "Education",
+    "Healthcare & Sanitation": "Healthcare",
+    "Agriculture & Rural Development": "Agriculture",
+    "Environment & Climate": "Other",
+    "Employment & Livelihood": "Other",
+    "Digital Governance": "Other",
+    "Other": "Other",
+}
+
+
+def to_app_category(category: str | None) -> str:
+    return _TO_APP_CATEGORY.get(normalize_category(category), "Other")

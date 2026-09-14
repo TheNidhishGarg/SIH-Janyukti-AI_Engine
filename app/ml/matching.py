@@ -47,6 +47,7 @@ class MatchCandidate:
     state: str = ""
     active_projects: int = 0
     capacity: int = 0
+    source: str = ""
 
 
 def _category_score(challenge_category: str, uni: University, tags: list[str]) -> tuple[float, str | None]:
@@ -96,6 +97,50 @@ def _proximity_score(uni: University, district: str | None, state: str | None) -
     return 0.2, None
 
 
+def score_university(
+    uni,
+    semantic: float,
+    category: str,
+    tags: list[str],
+    district: str | None,
+    state: str | None,
+) -> MatchCandidate:
+    """Combine the four signals for one department into a ranked candidate."""
+    cat_score, cat_reason = _category_score(category, uni, tags)
+    cap_score, cap_reason = _capacity_score(uni)
+    prox_score, prox_reason = _proximity_score(uni, district, state)
+
+    total = (
+        WEIGHTS["semantic"] * semantic
+        + WEIGHTS["category"] * cat_score
+        + WEIGHTS["capacity"] * cap_score
+        + WEIGHTS["proximity"] * prox_score
+    )
+
+    reasons = [r for r in (cat_reason, prox_reason, cap_reason) if r]
+    if semantic >= 0.5:
+        reasons.insert(0, f"Strong expertise match ({semantic:.0%} similarity)")
+    elif semantic >= 0.3:
+        reasons.insert(0, f"Partial expertise match ({semantic:.0%} similarity)")
+
+    return MatchCandidate(
+        university_id=uni.id,
+        name=uni.name,
+        department=uni.department,
+        score=round(min(1.0, total), 4),
+        semantic_score=round(semantic, 4),
+        category_score=round(cat_score, 4),
+        capacity_score=round(cap_score, 4),
+        proximity_score=round(prox_score, 4),
+        reasons=reasons[:4],
+        city=uni.city,
+        state=uni.state,
+        active_projects=uni.active_projects or 0,
+        capacity=uni.capacity or 0,
+        source=getattr(uni, "source", "") or "",
+    )
+
+
 async def ensure_university_embeddings(db: AsyncSession, universities: list[University]) -> None:
     """Backfill or refresh embeddings whose model no longer matches the active one."""
     model_name = active_model_name()
@@ -137,43 +182,10 @@ async def rank_universities(
     query_vec = embedding or embed(challenge_text(title, description, category, location))
     sims = cosine_similarity_matrix(query_vec, [u.embedding or [] for u in universities])
 
-    candidates: list[MatchCandidate] = []
-    for uni, semantic in zip(universities, sims):
-        semantic = float(semantic)
-        cat_score, cat_reason = _category_score(category, uni, tags)
-        cap_score, cap_reason = _capacity_score(uni)
-        prox_score, prox_reason = _proximity_score(uni, district, state)
-
-        total = (
-            WEIGHTS["semantic"] * semantic
-            + WEIGHTS["category"] * cat_score
-            + WEIGHTS["capacity"] * cap_score
-            + WEIGHTS["proximity"] * prox_score
-        )
-
-        reasons = [r for r in (cat_reason, prox_reason, cap_reason) if r]
-        if semantic >= 0.5:
-            reasons.insert(0, f"Strong expertise match ({semantic:.0%} similarity)")
-        elif semantic >= 0.3:
-            reasons.insert(0, f"Partial expertise match ({semantic:.0%} similarity)")
-
-        candidates.append(
-            MatchCandidate(
-                university_id=uni.id,
-                name=uni.name,
-                department=uni.department,
-                score=round(min(1.0, total), 4),
-                semantic_score=round(semantic, 4),
-                category_score=round(cat_score, 4),
-                capacity_score=round(cap_score, 4),
-                proximity_score=round(prox_score, 4),
-                reasons=reasons[:4],
-                city=uni.city,
-                state=uni.state,
-                active_projects=uni.active_projects or 0,
-                capacity=uni.capacity or 0,
-            )
-        )
+    candidates = [
+        score_university(uni, float(semantic), category, tags, district, state)
+        for uni, semantic in zip(universities, sims)
+    ]
 
     candidates.sort(key=lambda c: c.score, reverse=True)
     return candidates[:top_k]

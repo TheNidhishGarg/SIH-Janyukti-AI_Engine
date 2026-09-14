@@ -9,6 +9,7 @@ from app.config import settings
 from app.db import init_db
 from app.routes import (
     admin,
+    ai,
     auth,
     challenges,
     health,
@@ -40,6 +41,10 @@ async def lifespan(app: FastAPI):
     log.info("AI engine: llm=%s embeddings=%s",
              settings.GEMINI_MODEL if is_available() else "heuristic-fallback",
              active_model_name())
+    if settings.FIREBASE_AUTH_MODE.strip().lower() == "off":
+        log.warning("FIREBASE_AUTH_MODE=off: /ai routes accept unauthenticated requests")
+    else:
+        log.info("Firebase auth required for /ai (project %s)", settings.FIREBASE_PROJECT_ID)
     yield
 
 
@@ -70,6 +75,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 for router in (
     health.router,
+    ai.router,
     auth.router,
     challenges.router,
     projects.router,

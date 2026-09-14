@@ -1,3 +1,6 @@
+# Install:  pip install -r requirements.txt
+# Tested with Python 3.12. Lower bounds are versions the code relies on.
+
 # --- Web ---
 fastapi>=0.110.0
 uvicorn[standard]>=0.27.0
@@ -17,18 +20,21 @@ aiosqlite>=0.19.0
 # --- Auth ---
 pyjwt>=2.8.0
 passlib>=1.7.4
+# Verifies Firebase ID tokens sent by the Flutter app (app/core/firebase_auth.py)
+google-auth>=2.22.0
+requests>=2.31.0
 
 # --- ML ---
 numpy>=1.24.0
 google-generativeai>=0.4.0
-# Optional: the embedding model. Without it the hashing fallback is used and
-# everything still runs (see app/ml/embeddings.py).
+# The embedding model. Pulls in PyTorch (~2 GB). Without it, set
+# USE_LOCAL_EMBEDDINGS=false and the hashing fallback is used instead.
 sentence-transformers>=2.5.0
 
 # --- Media (optional) ---
 cloudinary>=1.39.0
 
-# --- Dev ---
+# --- Tests ---
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
 httpx>=0.26.0
